@@ -2,8 +2,18 @@
 
 import { useFilterStore } from '@/app/stores/filterStore';
 
-export default function SearchBar() {
+interface SearchBarProps {
+  onSearch?: () => void;
+}
+
+export default function SearchBar({ onSearch }: SearchBarProps) {
   const { booleanQuery, setBooleanQuery } = useFilterStore();
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && onSearch) {
+      onSearch();
+    }
+  };
 
   return (
     <div className="w-full max-w-2xl mx-auto mb-6">
@@ -12,8 +22,9 @@ export default function SearchBar() {
           type="text"
           value={booleanQuery}
           onChange={(e) => setBooleanQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Search papers (e.g., transformer AND attention OR bert)"
-          className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+          className="w-full px-4 py-3 text-base text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm placeholder:text-gray-400"
         />
         <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
           <svg

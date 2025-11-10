@@ -68,11 +68,21 @@ export function matchesBooleanQuery(paper: ArXivPaper, query: string): boolean {
   if (!query || query.trim().length === 0) return true;
   
   const searchText = `${paper.title} ${paper.summary} ${paper.authors.join(' ')}`.toLowerCase();
-  const queryLower = query.toLowerCase();
+  const queryLower = query.toLowerCase().trim();
   
   // Simple boolean query parsing
   // Support: AND, OR, NOT operators
   // Example: "transformer AND attention OR bert"
+  // Also supports simple queries: "transformer" matches if word is found
+  
+  // Check if query contains boolean operators
+  const hasOperators = /\s+(AND|OR|NOT)\s+/i.test(queryLower);
+  
+  if (!hasOperators) {
+    // Simple query - check if any word matches
+    const words = queryLower.split(/\s+/).filter(w => w.length > 0);
+    return words.some(word => searchText.includes(word));
+  }
   
   // Split by OR first (lowest precedence)
   const orParts = queryLower.split(/\s+OR\s+/);
@@ -83,16 +93,19 @@ export function matchesBooleanQuery(paper: ArXivPaper, query: string): boolean {
     let andMatches = true;
     
     for (const andPart of andParts) {
+      const trimmed = andPart.trim();
+      
       // Check for NOT
-      if (andPart.trim().startsWith('not ')) {
-        const term = andPart.trim().substring(4);
-        if (searchText.includes(term)) {
+      if (trimmed.startsWith('not ')) {
+        const term = trimmed.substring(4).trim();
+        if (term && searchText.includes(term)) {
           andMatches = false;
           break;
         }
       } else {
-        // Regular term
-        if (!searchText.includes(andPart.trim())) {
+        // Regular term - check if word is in search text
+        const term = trimmed;
+        if (term && !searchText.includes(term)) {
           andMatches = false;
           break;
         }

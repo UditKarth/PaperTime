@@ -103,7 +103,7 @@ export default function Home() {
               </p>
               
               {/* Search Bar */}
-              <SearchBar />
+              <SearchBar onSearch={handleRecommend} />
               
               {/* Recommend Button */}
               <div className="flex justify-center mt-6">
