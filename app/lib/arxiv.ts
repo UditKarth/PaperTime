@@ -16,9 +16,9 @@ const ARXIV_API_BASE = 'https://export.arxiv.org/api/query';
 // CORS proxies to bypass CORS restrictions for ArXiv API (fallback chain)
 // Format: [proxyBaseUrl, isJsonResponse]
 const CORS_PROXIES: Array<[string, boolean]> = [
+  ['https://corsproxy.io/?', false],
   ['https://api.allorigins.win/get?url=', true], // Returns JSON with contents field
   ['https://api.allorigins.win/raw?url=', false], // Returns raw content
-  ['https://corsproxy.io/?', false],
   ['https://api.codetabs.com/v1/proxy?quest=', false],
 ];
 
