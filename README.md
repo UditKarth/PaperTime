@@ -120,7 +120,12 @@ PaperTime/
 
 ### CORS and ArXiv API
 
-The application makes direct API calls to ArXiv from the browser. ArXiv's API supports CORS, so this works without a backend proxy. If you encounter CORS issues, you may need to use a CORS proxy or set up a backend API.
+The application makes API calls to ArXiv from the browser. Since ArXiv's API doesn't support CORS, the application uses a CORS proxy service (`api.allorigins.win`) to bypass this restriction. This allows the application to work entirely client-side without requiring a backend server.
+
+If you encounter issues with the CORS proxy, you can:
+- Set up your own CORS proxy server
+- Use a different CORS proxy service
+- Deploy a backend API to proxy requests
 
 ### Browser Compatibility
 

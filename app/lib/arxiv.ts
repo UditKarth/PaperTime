@@ -13,6 +13,17 @@ export interface ArXivPaper {
 }
 
 const ARXIV_API_BASE = 'https://export.arxiv.org/api/query';
+// CORS proxy to bypass CORS restrictions for ArXiv API
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+
+function getArXivUrl(params: string): string {
+  const arxivUrl = `${ARXIV_API_BASE}?${params}`;
+  // Use CORS proxy in browser environment
+  if (typeof window !== 'undefined') {
+    return `${CORS_PROXY}${encodeURIComponent(arxivUrl)}`;
+  }
+  return arxivUrl;
+}
 
 function parseXmlResponse(xml: string): ArXivPaper[] {
   const parser = new DOMParser();
@@ -90,16 +101,17 @@ export async function searchArXiv(
   sortBy: 'relevance' | 'lastUpdatedDate' | 'submittedDate' = 'submittedDate',
   sortOrder: 'ascending' | 'descending' = 'descending'
 ): Promise<ArXivPaper[]> {
-  try {
-    const params = new URLSearchParams({
-      search_query: query || 'cat:cs.AI OR cat:cs.LG OR cat:cs.CV OR cat:cs.CL OR cat:cs.NE',
-      start: start.toString(),
-      max_results: maxResults.toString(),
-      sortBy: sortBy,
-      sortOrder: sortOrder,
-    });
+  const params = new URLSearchParams({
+    search_query: query || 'cat:cs.AI OR cat:cs.LG OR cat:cs.CV OR cat:cs.CL OR cat:cs.NE',
+    start: start.toString(),
+    max_results: maxResults.toString(),
+    sortBy: sortBy,
+    sortOrder: sortOrder,
+  });
 
-    const response = await axios.get(`${ARXIV_API_BASE}?${params.toString()}`, {
+  try {
+    const url = getArXivUrl(params.toString());
+    const response = await axios.get(url, {
       headers: {
         'Accept': 'application/atom+xml',
       },
@@ -108,8 +120,23 @@ export async function searchArXiv(
 
     const papers = parseXmlResponse(response.data);
     return papers;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching from ArXiv:', error);
+    // If CORS proxy fails, try direct request (may fail in browser)
+    if (error.message?.includes('CORS') || error.code === 'ERR_BLOCKED_BY_CLIENT' || error.message?.includes('Network Error')) {
+      console.warn('CORS proxy failed, attempting direct request (may not work in browser)');
+      try {
+        const directResponse = await axios.get(`${ARXIV_API_BASE}?${params.toString()}`, {
+          headers: {
+            'Accept': 'application/atom+xml',
+          },
+          responseType: 'text',
+        });
+        return parseXmlResponse(directResponse.data);
+      } catch (directError) {
+        console.error('Direct request also failed:', directError);
+      }
+    }
     return [];
   }
 }
