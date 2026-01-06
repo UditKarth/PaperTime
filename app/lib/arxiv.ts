@@ -13,16 +13,23 @@ export interface ArXivPaper {
 }
 
 const ARXIV_API_BASE = 'https://export.arxiv.org/api/query';
-// CORS proxy to bypass CORS restrictions for ArXiv API
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+// CORS proxies to bypass CORS restrictions for ArXiv API (fallback chain)
+// Format: [proxyBaseUrl, isJsonResponse]
+const CORS_PROXIES: Array<[string, boolean]> = [
+  ['https://api.allorigins.win/get?url=', true], // Returns JSON with contents field
+  ['https://api.allorigins.win/raw?url=', false], // Returns raw content
+  ['https://corsproxy.io/?', false],
+  ['https://api.codetabs.com/v1/proxy?quest=', false],
+];
 
-function getArXivUrl(params: string): string {
+function getArXivUrl(params: string, proxyIndex: number = 0): [string, boolean] {
   const arxivUrl = `${ARXIV_API_BASE}?${params}`;
   // Use CORS proxy in browser environment
   if (typeof window !== 'undefined') {
-    return `${CORS_PROXY}${encodeURIComponent(arxivUrl)}`;
+    const [proxy, isJson] = CORS_PROXIES[proxyIndex] || CORS_PROXIES[0];
+    return [`${proxy}${encodeURIComponent(arxivUrl)}`, isJson];
   }
-  return arxivUrl;
+  return [arxivUrl, false];
 }
 
 function parseXmlResponse(xml: string): ArXivPaper[] {
@@ -109,36 +116,82 @@ export async function searchArXiv(
     sortOrder: sortOrder,
   });
 
-  try {
-    const url = getArXivUrl(params.toString());
-    const response = await axios.get(url, {
-      headers: {
-        'Accept': 'application/atom+xml',
-      },
-      responseType: 'text',
-    });
+  // Try each CORS proxy in sequence
+  for (let i = 0; i < CORS_PROXIES.length; i++) {
+    try {
+      const [url, expectsJson] = getArXivUrl(params.toString(), i);
+      console.log(`Attempting CORS proxy ${i + 1}/${CORS_PROXIES.length}`);
+      
+      const response = await axios.get(url, {
+        headers: {
+          'Accept': expectsJson ? 'application/json' : 'application/atom+xml, text/xml, */*',
+        },
+        responseType: expectsJson ? 'json' : 'text',
+        timeout: 30000, // 30 second timeout
+      });
 
-    const papers = parseXmlResponse(response.data);
-    return papers;
-  } catch (error: any) {
-    console.error('Error fetching from ArXiv:', error);
-    // If CORS proxy fails, try direct request (may fail in browser)
-    if (error.message?.includes('CORS') || error.code === 'ERR_BLOCKED_BY_CLIENT' || error.message?.includes('Network Error')) {
-      console.warn('CORS proxy failed, attempting direct request (may not work in browser)');
-      try {
-        const directResponse = await axios.get(`${ARXIV_API_BASE}?${params.toString()}`, {
-          headers: {
-            'Accept': 'application/atom+xml',
-          },
-          responseType: 'text',
-        });
-        return parseXmlResponse(directResponse.data);
-      } catch (directError) {
-        console.error('Direct request also failed:', directError);
+      let xmlData: string;
+      
+      // Handle JSON-wrapped responses (allorigins.win/get returns JSON)
+      if (expectsJson && typeof response.data === 'object') {
+        const jsonData = response.data;
+        // allorigins.win/get returns { contents: "..." }
+        if (jsonData.contents) {
+          xmlData = jsonData.contents;
+        } else if (jsonData.data) {
+          xmlData = jsonData.data;
+        } else if (jsonData.response) {
+          xmlData = jsonData.response;
+        } else {
+          throw new Error('Unexpected JSON response format from proxy');
+        }
+      } else if (typeof response.data === 'string') {
+        xmlData = response.data;
+        // Check if it's actually JSON that needs parsing
+        if (xmlData.trim().startsWith('{')) {
+          try {
+            const jsonData = JSON.parse(xmlData);
+            if (jsonData.contents) {
+              xmlData = jsonData.contents;
+            } else if (jsonData.data) {
+              xmlData = jsonData.data;
+            }
+          } catch (e) {
+            // Not JSON, continue with original data
+          }
+        }
+      } else {
+        throw new Error('Unexpected response format from proxy');
       }
+
+      // Check if we got valid XML
+      if (xmlData && typeof xmlData === 'string' && xmlData.trim().length > 0) {
+        // Check if it looks like XML
+        if (xmlData.trim().startsWith('<?xml') || xmlData.trim().startsWith('<feed')) {
+          const papers = parseXmlResponse(xmlData);
+          if (papers.length > 0) {
+            console.log(`Successfully fetched ${papers.length} papers using proxy ${i + 1}`);
+            return papers;
+          }
+        } else {
+          console.warn(`Proxy ${i + 1} returned non-XML data, trying next proxy...`);
+        }
+      }
+    } catch (error: any) {
+      const errorMsg = error.message || error.toString();
+      console.warn(`CORS proxy ${i + 1} failed:`, errorMsg);
+      // Continue to next proxy
+      if (i < CORS_PROXIES.length - 1) {
+        continue;
+      }
+      // If all proxies failed, log the error
+      console.error('All CORS proxies failed. Last error:', errorMsg);
     }
-    return [];
   }
+
+  // If all proxies failed, return empty array
+  console.error('Failed to fetch papers from ArXiv: All CORS proxies failed');
+  return [];
 }
 
 export async function fetchRecentMLPapers(maxResults: number = 100): Promise<ArXivPaper[]> {
