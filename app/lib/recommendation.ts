@@ -1,4 +1,4 @@
-import { TfIdf } from 'natural';
+import { TFIDF } from './tfidf';
 import { ArXivPaper } from './arxiv';
 
 export interface PaperWithScore extends ArXivPaper {
@@ -9,27 +9,25 @@ export interface PaperWithScore extends ArXivPaper {
 }
 
 export function computeTFIDFVectors(papers: ArXivPaper[]): Map<string, number[]> {
-  const tfidf = new TfIdf();
+  const tfidf = new TFIDF();
   const vectors = new Map<string, number[]>();
   
   // Add all documents to TF-IDF
   papers.forEach(paper => {
-    const text = `${paper.title} ${paper.summary}`.toLowerCase();
+    const text = `${paper.title} ${paper.summary}`;
     tfidf.addDocument(text);
   });
   
+  // Build TF-IDF model
+  tfidf.build();
+  
   // Get all terms
-  const terms = new Set<string>();
-  papers.forEach((paper, index) => {
-    const text = `${paper.title} ${paper.summary}`.toLowerCase();
-    const words = text.split(/\s+/).filter(w => w.length > 2);
-    words.forEach(w => terms.add(w));
-  });
+  const allTerms = tfidf.getAllTerms();
   
   // Compute TF-IDF vector for each paper
   papers.forEach((paper, index) => {
     const vector: number[] = [];
-    terms.forEach(term => {
+    allTerms.forEach(term => {
       const score = tfidf.tfidf(term, index);
       vector.push(score);
     });

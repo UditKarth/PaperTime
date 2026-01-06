@@ -31,23 +31,16 @@ export default function Home() {
   const handleRecommend = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/recommend', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const { getRecommendations } = await import('@/app/lib/api-client');
+      const data = await getRecommendations(
+        Array.from(likedPapers),
+        {
+          subjects,
+          paperTypes,
+          booleanQuery,
         },
-        body: JSON.stringify({
-          likedPaperIds: Array.from(likedPapers),
-          filters: {
-            subjects,
-            paperTypes,
-            booleanQuery,
-          },
-          maxResults: 10,
-        }),
-      });
-
-      const data = await response.json();
+        10
+      );
       if (data.papers) {
         setPapers(data.papers);
       }

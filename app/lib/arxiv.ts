@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { parseString } from 'xml2js';
 
 export interface ArXivPaper {
   id: string;
@@ -13,15 +12,75 @@ export interface ArXivPaper {
   comment?: string;
 }
 
-const ARXIV_API_BASE = 'http://export.arxiv.org/api/query';
+const ARXIV_API_BASE = 'https://export.arxiv.org/api/query';
 
-function parseXmlResponse(xml: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    parseString(xml, { explicitArray: false, mergeAttrs: true }, (err, result) => {
-      if (err) reject(err);
-      else resolve(result);
+function parseXmlResponse(xml: string): ArXivPaper[] {
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xml, 'text/xml');
+  
+  // Check for parsing errors
+  const parserError = xmlDoc.querySelector('parsererror');
+  if (parserError) {
+    throw new Error('Failed to parse XML response');
+  }
+  
+  const entries = xmlDoc.querySelectorAll('entry');
+  const papers: ArXivPaper[] = [];
+  
+  entries.forEach((entry) => {
+    const idElement = entry.querySelector('id');
+    const id = idElement?.textContent?.split('/').pop() || '';
+    
+    const titleElement = entry.querySelector('title');
+    const title = (titleElement?.textContent || '').trim();
+    
+    const summaryElement = entry.querySelector('summary');
+    const summary = (summaryElement?.textContent || '').trim();
+    
+    const publishedElement = entry.querySelector('published');
+    const published = publishedElement?.textContent || '';
+    
+    const updatedElement = entry.querySelector('updated');
+    const updated = updatedElement?.textContent || '';
+    
+    const authors: string[] = [];
+    entry.querySelectorAll('author').forEach((author) => {
+      const name = author.querySelector('name')?.textContent;
+      if (name) authors.push(name);
+    });
+    
+    const categories: string[] = [];
+    entry.querySelectorAll('category').forEach((category) => {
+      const term = category.getAttribute('term');
+      if (term) categories.push(term);
+    });
+    
+    const links: Array<{ href: string; rel: string; type?: string }> = [];
+    entry.querySelectorAll('link').forEach((link) => {
+      links.push({
+        href: link.getAttribute('href') || '',
+        rel: link.getAttribute('rel') || '',
+        type: link.getAttribute('type') || undefined,
+      });
+    });
+    
+    const commentElement = entry.querySelector('arxiv\\:comment, comment');
+    const comment = commentElement?.textContent || undefined;
+    
+    papers.push({
+      id,
+      title,
+      authors,
+      summary,
+      published,
+      updated,
+      categories,
+      links,
+      comment,
     });
   });
+  
+  return papers;
 }
 
 export async function searchArXiv(
@@ -47,60 +106,7 @@ export async function searchArXiv(
       responseType: 'text',
     });
 
-    const parsed = await parseXmlResponse(response.data);
-    const entries = parsed.feed?.entry || [];
-    
-    // Handle single entry case (xml2js doesn't wrap single items in arrays)
-    const entryArray = Array.isArray(entries) ? entries : [entries];
-    
-    const papers: ArXivPaper[] = entryArray.map((entry: any) => {
-      const id = entry.id?.split('/').pop() || '';
-      const title = (entry.title || '').trim();
-      const summary = (entry.summary || '').trim();
-      const published = entry.published || '';
-      const updated = entry.updated || '';
-      
-      const authors = Array.isArray(entry.author) 
-        ? entry.author.map((a: any) => a.name || '')
-        : entry.author 
-        ? [entry.author.name || '']
-        : [];
-
-      const categories = Array.isArray(entry.category)
-        ? entry.category.map((c: any) => c.term || '')
-        : entry.category
-        ? [entry.category.term || '']
-        : [];
-
-      const links = Array.isArray(entry.link)
-        ? entry.link.map((l: any) => ({
-            href: l.href || '',
-            rel: l.rel || '',
-            type: l.type || undefined,
-          }))
-        : entry.link
-        ? [{
-            href: entry.link.href || '',
-            rel: entry.link.rel || '',
-            type: entry.link.type || undefined,
-          }]
-        : [];
-
-      const comment = entry['arxiv:comment']?._ || entry['arxiv:comment'] || undefined;
-
-      return {
-        id,
-        title,
-        authors: authors.filter(Boolean),
-        summary,
-        published,
-        updated,
-        categories: categories.filter(Boolean),
-        links,
-        comment,
-      };
-    });
-
+    const papers = parseXmlResponse(response.data);
     return papers;
   } catch (error) {
     console.error('Error fetching from ArXiv:', error);

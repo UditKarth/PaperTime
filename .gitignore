@@ -12,6 +12,9 @@
 /.next/
 /out/
 
+# github pages
+/.github/workflows/.DS_Store
+
 # production
 /build
 
